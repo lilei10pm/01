@@ -1,0 +1,55 @@
+.airlevel1{
+    color:#67ce0b;
+}
+.airlevel2{
+    color:#f2d62d;
+}
+.airlevel3{
+    color:#fa8a04;
+}
+.airlevel4{
+    color:#f80302;
+}
+.airlevel5{
+    color:#cf0000;
+}
+.airlevel6{
+    color:#970454;
+}
+.airlevel7{
+    color:#5f021d;
+}
+.airlevel8{
+    color:#A8A5A5;
+}
+
+.airlevel_invalid{
+    color:#888;
+}
+.airlevel_bg1{
+    background-color: #a2ce4c;
+}
+.airlevel_bg2{
+    background-color:#f2d62d;
+}
+.airlevel_bg3{
+    background-color:#fa8a04;
+}
+.airlevel_bg4{
+    background-color:#f80302;
+}
+.airlevel_bg5{
+    background-color:#cf0000;
+}
+.airlevel_bg6{
+    background-color:#970454;
+}
+.airlevel_bg7{
+    background-color:#5f021d;
+}
+.airlevel_bg8{
+    background-color:#A8A5A5;
+}
+.airlevel_bg_invalid{
+    background-color:#888;
+}

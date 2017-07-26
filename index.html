@@ -1,0 +1,616 @@
+<!DOCTYPE html>
+<html>
+
+	<head lang="en">
+		<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+		<meta name="viewport" content="initial-scale=1.0, user-scalable=no" />
+		<title>污染事件回放</title>
+		<script type="text/javascript" src="http://api.map.baidu.com/api?v=2.0&ak=Lsg0sWepm3GaPrflStO5aYfvfK3GPanH"></script>
+		<link href="css/index.css" rel="stylesheet" type="text/css">
+		<!--<link rel="stylesheet" href="lib/bootstrap.min.css">-->
+		<link href="http://cdn.bootcss.com/bootstrap/3.3.7/css/bootstrap.min.css" rel="stylesheet">
+		<script src="lib/vue.min.js"></script>
+		<link rel="stylesheet" href="https://unpkg.com/element-ui/lib/theme-default/index.css">
+		<link rel="stylesheet" type="text/css" href="http://fonts.googleapis.com/css?family=Metrophobic">
+
+		<!-- 引入组件库 -->
+		<script src="https://unpkg.com/element-ui/lib/index.js"></script>
+
+		<script src="lib/moment.min.js"></script>
+		<script src="lib/axios.min.js"></script>
+		<script src="lib/lodash.min.js"></script>
+		<script src="lib/util.js"></script>
+		<link href="lib/style.css" type="text/css" rel="stylesheet">
+		<script src="canvas_overlay.js"></script>
+		<script src="lib/vue.min.js"></script>
+		<script src="lib/CanvasLayer.js"></script>
+		<script src="kriging.js"></script>
+
+		<style>
+			.ttable {
+				padding: 1px;
+				border: solid 1px;
+			}
+			
+			.ttable td {
+				padding: 3px;
+				border: solid 1px;
+			}
+			
+			.el-slider__runway {
+				margin-top: 0px!important;
+				margin-bottom: 0px!important;
+			}
+		</style>
+	</head>
+
+	<body>
+		<div class="main" id="app">
+			<!--导航-->
+			<h2>{{pollution.Name}}--{{formattime(pollution.BeginTime)}}--{{formattime(pollution.EndTime)}}
+    	        <span style='display:inline-block;position:absolute;right:180px'>
+    	       	<el-switch v-model="PollutionTrend.bshow"on-color="#13ce66"off-color="gray"off-text='关'on-text='开'><el-switch>
+    	       </span>
+    	       <span style='display:inline-block;position:absolute;right:90px;font-weight:bold;'><h5>污染趋势查看</h5></span>
+            </h2>
+			<div>
+				<!--内容-->
+				<div style="width: 500px">
+					<div style="display: inline-block;">
+						<span style="line-height: 30px;vertical-align:middle;height:50px">半径</span>
+						<el-slider v-model="radius" :min="1" :max="100" :step="1" style="width:150px;display:inline-block"></el-slider>
+					</div>
+					<div style="display: inline-block;">
+						播放速度：
+						<el-radio-group v-model="steptype" style="">
+							<el-radio-button label="1x"></el-radio-button>
+							<el-radio-button label="2x"></el-radio-button>
+							<el-radio-button label="5x"></el-radio-button>
+							<el-radio-button label="10x"></el-radio-button>
+						</el-radio-group>
+					</div>
+				</div>
+				<!--时间条-->
+
+				<div class='frame-main' style='width:100%;display: flex'>
+					<div>
+						<a class='btn btn-warning' style="height:35px;" v-show='!bplay' @click.stop="startplay()">
+							<span class='glyphicon glyphicon-play' style="display: block"></span>
+						</a>
+						<a class='btn btn-warning' style="height:35px;" @click.stop="stopplay()" v-show='bplay'>
+							<span class='glyphicon glyphicon-pause' style="display: block"></span>
+						</a>
+					</div>
+
+					<div id='toolbar' @click="setpos" ref="bar" style='height:38px;flex:1;line-height:35px;background-color:rgba(50,100,100,0.5);z-index:99;display: inline-block;position: relative;'>
+						<div style='background-color: #1b6d85;height: 100%' :style="{width:width}">
+							<el-tooltip v-for="item in warnitems" class="item" effect="dark" :content="item.ExcReason" placement="top-end">
+								<div :style="{left:getpos(item.TIME)}" style="position: absolute;width: 2px;height: 10px;background-color: red"></div>
+							</el-tooltip>
+						</div>
+
+					</div>
+				</div>
+
+				<el-checkbox v-model="showname">显示站点名称</el-checkbox>
+
+			</div>
+			<!--底部部分-->
+
+			<div style="width: 100%;height: 100%;">
+				<div id="allmap" style="width: 100%;height: 100%;"></div>
+			</div>
+
+		</div>
+		<script src="https://unpkg.com/element-ui/lib/index.js"></script>
+		<script src="plot.js"></script>
+		<script type="text/javascript">
+		
+		
+		
+		
+		
+		
+			var thevue
+			let itemA = []
+			let lng = []
+			let lat = []
+			let data1 = []
+			let lng1 = []
+			let lat1 = []
+
+			function getPollutionEvent() {
+				var pollution_id = location.href.split('?')[1].split('=')[1]
+				if(pollution_id) {
+					return axios.get('http://sn.novaecs.com:8000/api/v1/pollution_event/' + pollution_id).then(function(data) {
+						//console.log(data.data.stations.length)
+						data1 = data.data.stations
+						//创建kriging模型及图形绘制
+						//var model = "exponential";
+						// var sigma2 = 0, alpha = 100;
+						//var fitModel = kriging.train(t, x, y, model, sigma2, alpha);
+						//var tnew = kriging.predict(xnew, ynew, fitModel);
+						_.map(data1, function(item) {
+							lng.push(item.Lng)
+							lat.push(item.Lat)
+						})
+						let lng_max = Math.max.apply(null, lng)
+						let lng_min = Math.min.apply(null, lng)
+						let a = (lng_max - lng_min) / 100
+						let lat_max = Math.max.apply(null, lat)
+						let lat_min = Math.min.apply(null, lat)
+						window.rgn = {
+							lng_max,
+							lng_min,
+							lat_max,
+							lat_min
+						}
+						let b = (lat_max - lat_min) / 100
+						let itemD = []
+
+						for(let i = 0; i < 101; i++) {
+							let itemD = []
+							for(let j = 0; j < 101; j++) {
+								itemD.push([lng_min + a * i, lat_max - b * j])
+							}
+							itemA.push(itemD)
+						}
+						//console.log(itemA)
+
+						if(data.data.err) {
+							throw data.data.err
+						} else {
+							return data.data
+						}
+
+					})
+				} else {
+					return new Promise(function(resolve, reject) {
+						reject("pollution_id no specified ")
+					})
+				}
+			}
+			var iotUrl = "http://sn.novaecs.com/iot/"
+
+			function getGfStations() {
+				let [lat, lng] = [39.9093, 116.3964]
+
+				let url = "stations/bounds/" + 9 + "/" + (lng - 0.5) + "/" + (lng + 0.5) + "/" + (lat - 0.5) + "/" + (lat + 0.5);
+				//console.log(iotUrl + url)
+				return axios.get(iotUrl + url).then(function(d) {
+
+				});
+			}
+			getGfStations()
+
+			// 百度地图API功能
+			var mp
+			var ComplexCustomOverlay
+
+			function initmap() {
+				mp = new BMap.Map("allmap", {
+					enableMapClick: false
+				});
+				mp.centerAndZoom(new BMap.Point(116.3964, 39.9093), 15);
+				mp.enableScrollWheelZoom();
+				mp.addControl(new BMap.NavigationControl({
+					type: BMAP_NAVIGATION_CONTROL_SMALL
+				}));
+				window.map = mp
+
+				// 复杂的自定义覆盖物
+				function ComplexCustomOverlay(point, text, color, station, showname, radius) {
+					this._point = point;
+					this._text = text;
+					this._overText = "";
+					this._color = color
+					this._station = station
+					this._showname = showname
+					this._R = radius
+				}
+				ComplexCustomOverlay.prototype = new BMap.Overlay();
+				ComplexCustomOverlay.prototype.initialize = function(map) {
+					this._map = map;
+					var div = this._div = document.createElement("div");
+					div.style.position = "absolute";
+					div.style.zIndex = BMap.Overlay.getZIndex(this._point.lat);
+					//div.style.backgroundColor = "#EE5D5B";
+					// div.classList.add('airlevel_bg'+this._level)
+					div.style.backgroundColor = this._color
+					// div.style.border = "1px solid black";
+					div.style.borderRadius = this._R * 2 + "px";
+					div.style.color = "gray";
+					div.style.fontSize = "20px";
+					div.style.textAlign = 'center';
+					div.style.height = this._R * 2 + "px";
+					div.style.width = this._R * 2 + "px";
+					div.style.padding = "2px";
+					div.style.lineHeight = this._R * 2 + "px";
+					div.style.whiteSpace = "nowrap";
+					div.style.MozUserSelect = "none";
+					div.style.fontSize = "12px"
+
+					var span = this._span = document.createElement("span");
+					div.appendChild(span);
+					if(this._showname) {
+						span.appendChild(document.createTextNode(this._station.station.Name + " " + this._text));
+						//span.style.textShadow="#000 1px 0 0,#000 0 1px 0,#000 -1px 0 0,#000 0 -1px 0;"
+					} else {
+						span.appendChild(document.createTextNode(this._text));
+					}
+
+					var that = this;
+
+					var that = this
+					div.onmouseover = function() {
+						//this.style.backgroundColor = "#6BADCA";
+						this.style.borderColor = "#0000ff";
+
+					}
+
+					div.onmouseout = function() {
+						//this.style.backgroundColor = "#EE5D5B";
+						this.style.borderColor = "#BC3B3A";
+
+					}
+					div.onclick = function(e) {
+						e.stopPropagation()
+						var sContent = "<h2>" + that._station.station.Name + "</h2>" +
+							"<p>pm2.5:" + that._station.sensordata.pm25 + "</p>" +
+							"<p>pm10:" + that._station.sensordata.pm10 + "</p>" +
+							"<p>time:" + moment(that._station.sensordata.TIME).format("YYYY-MM-DD HH:mm") + "</p>"
+						if(that._warnitem) {
+							sContent = sContent + "<p>" + that._warnitem.ExcReason + "</p>"
+						}
+						var infoWindow = new BMap.InfoWindow(sContent);
+						map.openInfoWindow(infoWindow, that._point)
+					}
+
+					mp.getPanes().labelPane.appendChild(div);
+
+					return div;
+				}
+				ComplexCustomOverlay.prototype.draw = function() {
+					var map = this._map;
+					var pixel = map.pointToOverlayPixel(this._point);
+					this._div.style.left = pixel.x - this._R + "px";
+					this._div.style.top = pixel.y - this._R + "px";
+				}
+
+			}
+			var rs1 = []
+			var aa = []
+			var aaa = []
+			var bbb = []
+			var lg_max
+			var lg_min
+			var la_max
+			var la_min
+
+			function getBoundary(city, showboundry) {
+				var bdary = new BMap.Boundary();
+				//        var name = document.getElementById("districtName").value;
+				city = city || "肃宁"
+				bdary.get(city, function(rs) { //获取行政区域
+					rs1 = rs.boundaries
+					_.map(rs1[0].split(";"), function(item) {
+						aa.push(item.split(","))
+					})
+					_.map(aa, function(a) {
+						aaa.push(a[0])
+						bbb.push(a[1])
+					})
+					lg_max = Math.max.apply(null, aaa)
+					console.log(lg_max)
+
+					lg_min = Math.min.apply(null, aaa)
+					console.log(lg_min)
+					//let xx= lg_max-lg_min
+					la_max = Math.max.apply(null, bbb)
+					console.log(la_max)
+					la_min = Math.min.apply(null, bbb)
+					console.log(la_min)
+
+					aa = _.sortedUniq(aa)
+					console.log(aa)
+
+					var count = rs.boundaries.length; //行政区域的点有多少个
+					console.log(count)
+					for(var i = 0; i < count; i++) {
+						var ply = new BMap.Polygon(rs.boundaries[i], {
+							strokeWeight: 2,
+							strokeColor: "#ff0000",
+							fillColor: "",
+							enableMassClear: false
+						}); //建立多边形覆盖物
+						// console.log(ply)
+						if(showboundry) {
+							mp.addOverlay(ply); //添加覆盖物
+						}
+					}
+					mp.setViewport(ply.getPath()); //调整视野
+					//  console.log(mp.getcenter())
+				});
+			}
+			var data3 = []
+			let PollutionTrend={bshow:true}
+			function getTimes(time, ids) {
+				//var ids="30,31,32,33,34,35,36,37,38,39,41,42,43,44,46,55,56,57,58,59,60,61,62,63,64,65,67,68,69,70,71,72,73,75,76"
+				return axios.get('http://sn.novaecs.com:8000/api/v1/history/DataByIdsAndTimePoint?timetype=1m&timepoint=' + moment(time).format("YYYY-MM-DD HH:mm") + '&' +
+					'ids=' + ids).then(function(response) {
+					//console.log(response);
+					let pm = []
+					let data2 = response.data
+					if(PollutionTrend.bshow){
+						for(item of response.data) {
+							pm.push(item.pm25)
+						}
+						let data3 = []
+						let data4 = [] //= _.filter(data1,d=>_.findIndex(data2,x=>d.Id== x.station_id)>-1)
+						for(let d of data2) {
+							let bd = _.find(data1, d0 => d0.Id == d.station_id)
+							data4.push(bd)
+						}
+						// console.log(data4)
+	
+						let lng = _.map(data4, x => x.Lng)
+						let lat = _.map(data4, x => x.Lat)
+	
+						var model = "exponential";
+						var sigma2 = 0,
+							alpha = 100;
+						var fitModel = kriging.train(pm, lng, lat, model, sigma2, alpha);
+						window.fitModel = fitModel
+						console.log(fitModel)
+						drawBackCanvas(fitModel)
+						update()
+					}
+
+					//var tnew = kriging.predict(22, 23, fitModel);
+					//console.log(tnew)
+					return response.data;
+				})['catch'](function(error) {
+					console.log(error);
+				});
+			}
+			//login()
+			var datas = []
+
+			var app = new Vue({
+				el: '#app',
+				data: {
+					PollutionTrend,
+					radius: 20,
+					steptype: "1x",
+					form: {
+						minute: 5,
+						add: 10,
+						add1: 10,
+						percent: 20,
+						percent1: 20
+					},
+					showname: false,
+					bplay: false,
+					pollution: {},
+					stationList: [],
+					sensordatas: [],
+					sensordatas2: [],
+					show: "pm25",
+					show_station_id: "",
+					btntype: '1m',
+					width: '0%',
+					timespan: [],
+					curtime: "",
+					warnitems: [
+
+					],
+					curhistoryTime: null
+				},
+				mounted: function mounted() {
+					initmap()
+					myplot()
+					var me = this;
+					this.loaddata().catch(function(e) {
+						me.$message.error(e)
+					})
+					thevue = this
+					// setInterval(this.loaddata, 10000);
+					//            setInterval(getBoundary(), 10000);
+					var self = this
+					this._overlay = new ComplexCustomOverlay();
+					mp.addOverlay(this._overlay);
+
+					},
+					computed: {
+							timestep: function() {
+									if(this.steptype =="1x") {
+							return 60
+						} else if(this.steptype == '2x') {
+							return 60 * 2
+						} else if(this.steptype == '5x') {
+							return 60 * 5
+						} else if(this.steptype == '10x') {
+							return 60 * 10
+						}
+					},
+					ids: function() {
+						//console.log(this.stationList)
+						return _.map(this.stationList, "Id").join(",")
+					},
+					stationWithData: function stationWithData() {
+						rs = []
+						for(var i in this.stationList) {
+							var sta = this.stationList[i]
+							var id = sta.Id
+							var f = _.find(this.sensordatas2, {
+								station_id: id + ""
+							})
+							var r = {}
+							r.station = sta;
+							if(f) {
+								r.sensordata = f;
+							} else {
+								r.sensordata = {};
+							}
+							rs.push(r)
+						}
+						return rs;
+					},
+
+				},
+				watch: {
+					PollutionTrend:{
+				      handler: function (val, oldVal) { 
+				      	if(!window.canvasLayer)return
+				      	if(PollutionTrend.bshow){
+				      		window.canvasLayer.canvas.style.display="block"
+				      	}else{
+				      		window.canvasLayer.canvas.style.display="none"
+				      	}},
+				      deep: true
+				    },
+					showname: function() {
+						this.drawmap()
+					},
+					radius: function() {
+						this.drawmap()
+					},
+					stationWithData: function() {
+						this.drawmap()
+					},
+					
+				},
+				methods: {
+					/*draw(){
+						 ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+               			ctx.globalAlpha = 0.7;
+       					 ctx.drawImage(canvasLayerBack.canvas, 0, 0, canvasLayerBack.canvas.width, canvasLayerBack.canvas.height);
+					},
+					update(){
+						 if (!ctx) {
+          					  return;
+       					 }
+		
+      					  this.draw()
+					},*/
+					stationNameById: function(id) {
+						var sta = _.find(this.stationList, {
+							Id: parseInt(id)
+						});
+						if(sta) {
+							// console.log(sta)
+							return sta.Name
+						}
+					},
+					drawmap: function() {
+		                this._overlay.setParams(this.radius)
+		                this._overlay.setStations(this.stationWithData)
+					},
+
+					formattime: function(t) {
+						return moment(t).format("YYYY-MM-DD HH:mm")
+					},
+					setpos: function(e) {
+						console.log(e.clientX, this.$refs.bar.clientWidth)
+						var percent = (e.offsetX / this.$refs.bar.clientWidth)
+						this.width = percent * 100 + '%'
+						var pretime = this.curtime
+						if(this.timespan.length == 2) {
+							var starttime = moment(this.timespan[0]).unix()
+							var endtime = moment(this.timespan[1]).unix()
+							this.curtime = moment((percent * (endtime - starttime) + starttime) * 1000)
+							this.getTimes()
+						}
+
+						if(pretime > this.curtime) {
+							//    this.clearChart()
+						}
+					},
+					settime: function(time) {
+						var self = this
+						self.curtime = time
+						self.getTimes()
+						self.width = self.getpos(self.curtime)
+						//self.clearChart()
+					},
+					getpos: function(time) {
+
+						var starttime = moment(this.timespan[0]).unix()
+						var endtime = moment(this.timespan[1]).unix()
+						var percent = ((moment(time).unix() - starttime) / (endtime - starttime))
+						if(this.$refs.bar) {
+							var width = this.$refs.bar.clientWidth
+							//    console.log('w',percent*width)
+							return percent * 100 + "%"
+						}
+						return 0;
+
+					},
+					getTimes: function() {
+						var self = this
+						getTimes(this.curtime, this.ids).then(function(d) {
+							self.sensordatas2 = d
+							return d
+						})
+					},
+					startplay: function() {
+						this.bplay = true
+						var self = this
+
+						this.intvalId = setInterval(function() {
+							self.curtime = moment((moment(self.curtime).unix() + self.timestep) * 1000)
+							// console.log("time",self.curtime)
+							self.getTimes()
+							if(self.curtime >= moment(self.timespan[1])) {
+								self.stopplay()
+							}
+
+							self.width = self.getpos(self.curtime)
+						}, 200)
+					},
+					stopplay: function() {
+						this.bplay = false
+						clearInterval(this.intvalId)
+					},
+					loaddata: function loaddata() {
+						var self = this;
+						// axios.defaults.headers.common['token'] = localStorage.getItem("xxxy_token");
+
+						return getPollutionEvent().then(function(d) {
+							self.stationList = d.stations
+							self.pollution = d.pollution
+							self.timespan[0] = moment(d.pollution.BeginTime)
+							self.timespan[1] = moment(d.pollution.EndTime)
+							self.curtime = self.timespan[0]
+
+							getBoundary(self.pollution.City, self.pollution.ShowCityBorder)
+						});
+					},
+					toInt: function toInt(v) {
+						var n = parseInt(v);
+						if(_.isNumber(n)) {
+							return n;
+						} else {
+							return '--';
+						}
+					},
+					getpmlevel: (function(_getpmlevel) {
+						function getpmlevel(_x, _x2) {
+							return _getpmlevel.apply(this, arguments);
+						}
+
+						getpmlevel.toString = function() {
+							return _getpmlevel.toString();
+						};
+
+						return getpmlevel;
+					})(function(type, v) {
+						return getpmlevel(type, v);
+					})
+				},
+			})
+		</script>
+
+	</body>
+
+</html>
